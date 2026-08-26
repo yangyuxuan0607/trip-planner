@@ -12,7 +12,7 @@ export type SeedUser = {
 };
 
 export const SEED_USERS: SeedUser[] = [
-  { id: "user-me", name: "我", pin: "1234", avatarText: "我", color: "#8a7458" },
-  { id: "user-a", name: "朋友 A", pin: "2580", avatarText: "A", color: "#6f7d5e" },
-  { id: "user-b", name: "朋友 B", pin: "3697", avatarText: "B", color: "#9c5b52" },
+  { id: "user-me", name: "yang", pin: "1234", avatarText: "Y", color: "#8a7458" },
+  { id: "user-a", name: "wong", pin: "2580", avatarText: "W", color: "#6f7d5e" },
+  { id: "user-b", name: "kogo", pin: "3697", avatarText: "K", color: "#9c5b52" },
 ];

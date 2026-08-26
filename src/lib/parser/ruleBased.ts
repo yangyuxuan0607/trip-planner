@@ -31,6 +31,8 @@ const LOCATION_PATTERNS: RegExp[] = [
   /入住\s*([^\s，。！？,]{1,20})/,
   /(?:在|去|到|於)\s*([^\s，。！？,]{1,14}(?:站|城|寺|神社|公園|飯店|酒店|[Hh]otel|機場|港|塔|山|島|區|町|廟|樂園))/,
   /([^\s，。！？,]{1,14}(?:站|城|寺|神社|公園|飯店|酒店|[Hh]otel|機場|港|塔|山|島|區|町|廟|樂園))/,
+  // 沒有上面那些地標字尾的短地名（例如「新宿」「涉谷」），靠後面接的動作詞或標點抓邊界
+  /(?:去|到|在|於|于)([一-龥ぁ-んァ-ヶー]{2,4})(?=吃|喝|看|買|买|玩|逛|集合|出發|出发|走|休息|拍照|逛街|購物|购物|報到|报到|參觀|参观|[，,、。！？\s]|$)/,
 ];
 
 function pad2(n: number) {
@@ -47,6 +49,18 @@ function extractDate(clause: string, referenceYear: number): string | null {
   }
   const iso = clause.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return `${iso[1]}-${pad2(Number(iso[2]))}-${pad2(Number(iso[3]))}`;
+
+  // "9.2" "9/2" 這種簡寫日期；排除接在小時/公里這類單位前面的小數，避免誤判
+  const md = clause.match(
+    /(?<!\d)(\d{1,2})[./](\d{1,2})(?!\d)(?!\s*(?:小時|小时|公里|分鐘|分钟|個月|个月|週|周|度|秒|米|公斤))/,
+  );
+  if (md) {
+    const month = Number(md[1]);
+    const day = Number(md[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${referenceYear}-${pad2(month)}-${pad2(day)}`;
+    }
+  }
   return null;
 }
 
@@ -103,6 +117,7 @@ function detectSuggestPoll(text: string): boolean {
 function stripLeadingMarkers(clause: string): string {
   return clause
     .replace(/\d{1,2}月\d{1,2}日/, "")
+    .replace(/(?<!\d)\d{1,2}[./]\d{1,2}(?!\d)/, "")
     .replace(/(凌晨|早上|上午|中午|下午|傍晚|晚上|夜晚|深夜)\d{0,2}[點点]?半?/, "")
     .replace(/\d{1,2}[:：]\d{2}/, "")
     .replace(/\d{1,2}[點点]半?/, "")

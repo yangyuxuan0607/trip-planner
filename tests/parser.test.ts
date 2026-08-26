@@ -40,4 +40,23 @@ describe("parseRuleBased", () => {
   it("returns an empty array for empty input", () => {
     expect(parseRuleBased("", 2026)).toEqual([]);
   });
+
+  it("recognizes M.D and M/D shorthand dates", () => {
+    const dot = parseRuleBased("我們之後9.2先去新宿吃飯一下", 2026);
+    expect(dot[0].date).toBe("2026-09-02");
+    expect(dot[0].title).not.toContain("9.2");
+
+    const slash = parseRuleBased("9/2去新宿吃飯", 2026);
+    expect(slash[0].date).toBe("2026-09-02");
+  });
+
+  it("does not misread a decimal duration as a date", () => {
+    const items = parseRuleBased("大概走1.5小時", 2026);
+    expect(items[0].date).toBeNull();
+  });
+
+  it("falls back to a short place name after 去/到 when there is no landmark suffix", () => {
+    const items = parseRuleBased("我們之後9.2先去新宿吃飯一下，像投票看看吃烤魚還是燒烤", 2026);
+    expect(items[0].locationName).toBe("新宿");
+  });
 });
