@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  TRANSPORT
+  SIGHT
+  FOOD
+  LODGING
+  SHOPPING
+  FREE
+  OTHER
+}
+
+enum ActivityAction {
+  LOGIN
+  ITEM_CREATE
+  ITEM_UPDATE
+  ITEM_DELETE
+  ITEM_REORDER
+  POLL_CREATE
+  POLL_UPDATE
+  POLL_DELETE
+  VOTE_CAST
+  EXPENSE_CREATE
+  EXPENSE_UPDATE
+  EXPENSE_DELETE
+  IMPORT_BULK
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  pinHash    String
+  avatarText String
+  color      String
+  createdAt  DateTime @default(now())
+
+  tripMemberships    TripMember[]
+  itineraryItems     ItineraryItem[] @relation("ItemCreatedBy")
+  polls              Poll[]          @relation("PollCreatedBy")
+  votes              Vote[]
+  expensesPaid       Expense[]       @relation("ExpensePaidBy")
+  expensesCreated    Expense[]       @relation("ExpenseCreatedBy")
+  expenseShares      ExpenseParticipant[]
+  activityLogs       ActivityLog[]
+}
+
+// 可翻譯欄位一律用 Zh/En/Ja 三個欄位：Zh 是必填的 anchor（畫面找不到目前語言版本時的 fallback），
+// En/Ja 選填。畫面顯示邏輯見 src/lib/i18n/content.ts 的 pickLocale()。
+model Trip {
+  id              String   @id @default(cuid())
+  nameZh          String
+  nameEn          String?
+  nameJa          String?
+  destinationZh   String
+  destinationEn   String?
+  destinationJa   String?
+  currency        String   @default("JPY")
+  startDate       DateTime
+  endDate         DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members  TripMember[]
+  days     Day[]
+  polls    Poll[]
+  expenses Expense[]
+  logs     ActivityLog[]
+}
+
+model TripMember {
+  id     String @id @default(cuid())
+  tripId String
+  userId String
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tripId, userId])
+}
+
+model Day {
+  id      String   @id @default(cuid())
+  tripId  String
+  date    DateTime
+  titleZh String?
+  titleEn String?
+  titleJa String?
+  order   Int      @default(0)
+
+  trip  Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  items ItineraryItem[]
+  polls Poll[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, date])
+}
+
+model ItineraryItem {
+  id               String    @id @default(cuid())
+  dayId            String
+  startTime        String?
+  endTime          String?
+  titleZh          String?
+  titleEn          String?
+  titleJa          String?
+  category         Category  @default(OTHER)
+  locationNameZh   String?
+  locationNameEn   String?
+  locationNameJa   String?
+  address          String?
+  mapsUrl          String?
+  noteZh           String?
+  noteEn           String?
+  noteJa           String?
+  cost             Int?
+  bookingRef       String?
+  url              String?
+  order            Int       @default(0)
+
+  day         Day    @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation("ItemCreatedBy", fields: [createdById], references: [id])
+
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dayId])
+}
+
+model Poll {
+  id          String    @id @default(cuid())
+  tripId      String
+  dayId       String?
+  questionZh  String?
+  questionEn  String?
+  questionJa  String?
+  deadline    DateTime?
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  day  Day? @relation(fields: [dayId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("PollCreatedBy", fields: [createdById], references: [id])
+
+  options PollOption[]
+  votes   Vote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId])
+}
+
+model PollOption {
+  id      String  @id @default(cuid())
+  pollId  String
+  labelZh String?
+  labelEn String?
+  labelJa String?
+  noteZh  String?
+  noteEn  String?
+  noteJa  String?
+  mapsUrl String?
+  url     String?
+  price   Int?
+  order   Int     @default(0)
+
+  poll  Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes Vote[]
+
+  @@index([pollId])
+}
+
+model Vote {
+  id           String @id @default(cuid())
+  pollId       String
+  pollOptionId String
+  userId       String
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pollId, userId])
+}
+
+model Expense {
+  id       String   @id @default(cuid())
+  tripId   String
+  itemId   String?
+  date     DateTime
+  titleZh  String?
+  titleEn  String?
+  titleJa  String?
+  category Category @default(OTHER)
+  amount   Int
+  currency String   @default("JPY")
+  note     String?
+
+  trip Trip           @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  item ItineraryItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  paidById String
+  paidBy   User   @relation("ExpensePaidBy", fields: [paidById], references: [id])
+
+  createdById String
+  createdBy   User   @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+
+  participants ExpenseParticipant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId])
+}
+
+model ExpenseParticipant {
+  id          String @id @default(cuid())
+  expenseId   String
+  userId      String
+  shareAmount Int
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+}
+
+model ActivityLog {
+  id         String         @id @default(cuid())
+  tripId     String
+  userId     String
+  action     ActivityAction
+  targetType String
+  targetName String
+  summary    String
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tripId, createdAt])
+}
