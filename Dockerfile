@@ -8,10 +8,10 @@ RUN npm ci
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# 建置階段用一個假的 DATABASE_URL 就夠了，next build 不會真的連線資料庫
-ENV DATABASE_URL="file:./build.db"
 RUN npx prisma generate
-RUN npm run build
+# next build 不需要連線資料庫（頁面都是動態的），migration 留到 container 啟動時再跑，
+# 所以這裡直接呼叫 next build，不要用 package.json 裡含 `prisma migrate deploy` 的 build script。
+RUN npx next build
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -27,9 +27,8 @@ COPY --from=builder /app/src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
-# SQLite 檔案放在這個掛載點，接到 persistent volume 才能重啟後保留資料
-ENV DATABASE_URL="file:/data/trip.db"
-VOLUME ["/data"]
+# 資料庫是外部的 Postgres，執行時用 -e 傳入，不在這裡給預設值：
+#   DATABASE_URL / DIRECT_URL / AUTH_SECRET（必填），ANTHROPIC_API_KEY（選填）
 EXPOSE 3000
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

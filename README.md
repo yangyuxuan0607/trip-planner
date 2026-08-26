@@ -112,21 +112,54 @@ npx tsc --noEmit
 npm run build
 ```
 
-## Docker / 部署到有 persistent disk 的 Node.js 平台
+## 資料庫：Postgres（不是 SQLite）
+
+資料庫是 **Postgres**，不是本地 SQLite 檔案（原本的 MVP 版本用 SQLite，但那種「檔案存在容器磁碟上」的做法在 Vercel 這類 serverless 平台上不會被保留下來，每次請求的檔案系統都可能是全新的，資料等於白寫）。改用 Postgres 之後不管部署到哪都能正常持久化。
+
+本機開發需要一個 Postgres 連線字串（`DATABASE_URL` / `DIRECT_URL`，兩個先填一樣的即可，除非你用會區分 pooled/direct 連線的服務）：
+
+```bash
+# 選項 A：本機跑一個 Postgres（需要 Docker）
+docker run -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+# .env 用 postgresql://postgres:postgres@localhost:5432/trip_planner
+
+# 選項 B：直接用 Neon（neon.tech）免費建一個資料庫，把它的連線字串貼進 .env
+```
+
+```bash
+npm run db:migrate   # 套用 prisma/migrations
+npm run db:seed
+npm run dev
+```
+
+## 部署到 Vercel
+
+1. 在 Vercel 專案的 **Storage** 分頁加一個 Postgres（背後是 Neon）。加好之後它會給你幾組連線字串，通常叫 `POSTGRES_PRISMA_URL`（有 connection pooling）和 `POSTGRES_URL_NON_POOLING`（直連，跑 migration 用）。
+2. 到專案的 **Environment Variables** 設定：
+   - `DATABASE_URL` = 上面 pooled 的那組（`POSTGRES_PRISMA_URL`）
+   - `DIRECT_URL` = 上面 non-pooling 的那組（`POSTGRES_URL_NON_POOLING`）
+   - `AUTH_SECRET` = 隨便一組隨機字串（必填）
+   - `ANTHROPIC_API_KEY`（選填，要用 AI 解析長文才需要）
+3. Framework Preset 保持 `Next.js`、Root Directory 保持 `./` 就好，不用改。點 Deploy。
+4. `package.json` 的 `build` script 是 `prisma migrate deploy && next build`，所以每次部署都會自動先套用 migration 再建置，不用手動跑。
+5. **種子資料只需要跑一次**：部署成功後，在本機用同一組正式環境的連線字串跑一次 seed（例如用 `vercel env pull` 拉環境變數，或直接把值貼到本機的 `.env`）：
+   ```bash
+   npx prisma db seed
+   ```
+   之後就可以用種子資料裡的三個帳號登入正式站。`seed.ts` 對使用者是 upsert、對旅行資料有「已存在就跳過」的保護，重複執行是安全的，不需要每次部署都手動再跑一次。
+
+## Docker（自架，需要自己接一個 Postgres）
 
 ```bash
 docker build -t trip-planner .
 docker run -p 3000:3000 \
+  -e DATABASE_URL="postgresql://..." \
+  -e DIRECT_URL="postgresql://..." \
   -e AUTH_SECRET="換成一組隨機字串" \
-  -v trip-planner-data:/data \
   trip-planner
 ```
 
-重點：
-
-- SQLite 檔案固定寫在容器內的 `/data/trip.db`，**一定要掛載 persistent volume 到 `/data`**，否則重啟容器資料會消失。
-- 容器啟動時（`docker-entrypoint.sh`）會自動執行 `prisma migrate deploy` 套用資料庫遷移，再執行 `prisma/seed.ts`（`upsert`，可重複執行不會清空既有旅行資料），最後啟動 `next start`。
-- 部署到 Railway / Render / Fly.io 這類支援 persistent volume 的平台時，把 volume 掛在 `/data`，並設定環境變數 `AUTH_SECRET`（必填）、`ANTHROPIC_API_KEY`（選填）即可；`DATABASE_URL` 已經在 Dockerfile 內指到 `/data/trip.db`，不需要另外設定。
+容器啟動時（`docker-entrypoint.sh`）會自動執行 `prisma migrate deploy` 套用資料庫遷移，再執行 `prisma/seed.ts`（upsert，可重複執行不會清空既有旅行資料），最後啟動 `next start`。適合部署到 Railway / Render / Fly.io 這類平台，資料庫本身建議直接用它們各自提供的 Postgres add-on。
 
 ## 已完成功能
 
@@ -139,7 +172,7 @@ docker run -p 3000:3000 \
 - 記帳：新增 / 編輯 / 刪除支出，勾選分攤者，除不盡金額正確分攤到總額，總支出、每人已付/應付/淨額、最少轉帳次數結算建議。
 - 操作記錄：右側 Drawer 查看最近 100 筆操作（登入、行程/投票/支出的新增改刪、投票、批量匯入）。
 - 響應式：手機底部 Drawer + 右下角新增按鈕，桌面置中 Dialog，主要內容寬度限制在約 900px。
-- Docker 化，SQLite 搭配 persistent volume 可長期保存資料。
+- 資料庫用 Postgres（Neon / Vercel Postgres 或自架），可以部署到 Vercel 這類 serverless 平台，也可以用附的 Dockerfile 自架。
 
 ## 尚未完成 / 適合第二階段
 
